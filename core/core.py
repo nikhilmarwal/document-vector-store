@@ -5,6 +5,15 @@ from pypdf import PdfReader
 from sentence_transfomers import SentenceTransfomer
 from langchain.schema import Document   #Document object have two components, page_content(str) and metadata(dictionary)
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from google.generativeai import genai
+from utils import SYSTEM_PROMPT
+import cohere
+
+# setting up the configuration for google gemini model
+GOOGLE_API_KEY = os.getenv(key="GOOGLE_API_KEY")
+
+genai.configure(api_key=GOOGLE_API_KEY)
+COHERE_API_KEY = os.getenv(key="COHERE_API_KEY")
 
 class VectorService():
 	""" Main class does all the work required for loading the text from documents , 
@@ -34,10 +43,14 @@ class VectorService():
 		self.metadata = [] # metadata array will contain the metadata of each chunk
 		self.content = [] # content array will contain the content i.e. text of each chunk
 		self._load_data() #calling the load data method (helper method) will load the index, metadata,content from memory if already exists
-		
+		self.rewriter_model = genai.GenerativeModel(
+					model_name ="models/gemini-1.5-flash",
+					system_instruction=SYSTEM_PROMPT	
+					)
+		self.reRanker_client = cohere.ClientV2(api_key=COHERE_API_KEY)
 	def _load_data(self):
 		""" Load the index, metadata, content from memory if does already exists"""
-		if all (os.path.exists(p) for p in [self.index_path, self.meta_path, self.content_path])
+		if all (os.path.exists(p) for p in [self.index_path, self.meta_path, self.content_path]):
 			print("Loading already data from memory")
 			try:
 				self.index = faiss.read_index(self.index_path)
@@ -107,6 +120,48 @@ class VectorService():
 		with open(self.meta_path, 'wb') as f_meta:
 			pickle.dump(self.metadata, f_meta)	
 			
+			
+	def _rewriter(self,query:str):
+		"""functions restructures the query/question, remove irrelevant context  and introduce relevant keyword that are more likely to match with  database for better retrievel. 
+		Args:
+			query(str): query given by the user is passed by search method.
+		Returns:
+			query(str): clean and right format query."""
+		
+		
+		response = self.rewriter_model.generate_content(
+			query,
+			generation_config={
+				"temperature":0.0,
+				"max_output_token":64
+			},
+			)
+		return response.text.strip()
+				
+	def _reRanker(self,rewritten_query:str, chunks_list: list,k:int):
+		""" Receives the chunks_list retrieved by from database and reranks them on the basis of relevence using api call from cohere.
+		Args: 
+			list-> list of retrived chunks from the vector database
+			rewritten_query:str: rewritten_ query from the rewritter
+			k: number of top we need 
+		Returns:
+			list -> list of reranked chunks with their ids.
+		"""
+		# chunks_list contanins the text in metadata['content']
+		docs = [item['metadata']['content'] for item in chunks_list]
+		response = self.reRanker_client.rerank(
+			model='rerank-v3.5',
+			query=rewritten_query,
+			documents=docs,
+			top_n=k)
+			
+		indices = [item.index for item in response.results]   # contains the indices in order returned by reranker
+		results = []
+		for index in indices:
+			results.append(chunks_list[index])  # rearranging the chunks
+		return results
+			
+		
 	def search (self, query:str, k:int):
 		""" Semantically searches the index using the query provided by the user
 		Args:
@@ -117,10 +172,13 @@ class VectorService():
 			"""
 		if self.index.ntotal == 0:
 			return {"error": "The index is empty please upload a document first"}
-			
+		
+		# rewrite the query
+		rewritten_query = self._rewriter(query)	
+		
 		# query into vectors
-		embeddings_query = self.embeddings_model.encode(query)
-		embeddings_query_np = np.array(embeddings_query).astype('float32')
+		embeddings_query = self.embeddings_model.encode(rewritten_query)
+		embeddings_query_np = np.array([embeddings_query)], dtype='float32')
 		faiss.normalize_L2(embeddings_query_np)
 		
 		# searching the faiss index
@@ -138,11 +196,15 @@ class VectorService():
 					"similarity": float(distances[0][i])
 					})
 					
-		return results 
+		# Re ranking the results
+		returned_length = len(results)   # length of returned results by faiss
+		reranked_results = self._reRanker(rewritten_query,results,returned_length)
+					
+		return reranked_results 
 		
 		
 		
-			
+		
 		
 			
 				
