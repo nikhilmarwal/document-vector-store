@@ -138,34 +138,13 @@ class VectorService():
 			)
 		return response.text.strip()
 				
-	def _reRanker(self,rewritten_query:str, chunks_list: list,k:int):
-		""" Receives the chunks_list retrieved by from database and reranks them on the basis of relevence using api call from cohere.
-		Args: 
-			list-> list of retrived chunks from the vector database
-			rewritten_query:str: rewritten_ query from the rewritter
-			k: number of top we need 
-		Returns:
-			list -> list of reranked chunks with their ids.
-		"""
-		# chunks_list contanins the text in metadata['content']
-		docs = [item['metadata']['content'] for item in chunks_list]
-		response = self.reRanker_client.rerank(
-			model='rerank-v3.5',
-			query=rewritten_query,
-			documents=docs,
-			top_n=k)
-			
-		indices = [item.index for item in response.results]   # contains the indices in order returned by reranker
-		results = []
-		for index in indices:
-			results.append(chunks_list[index])  # rearranging the chunks
-		return results
+
 			
 		
 	def search (self, query:str, k:int):
 		""" Semantically searches the index using the query provided by the user
 		Args:
-			query(str): query given by the user in natural language
+			query(str): query given by the user in natural language (rewritten)
 			K(int): Number of most relevant searches should be returned
 		Returns:
 			Dictionary of either results or error message
@@ -173,11 +152,8 @@ class VectorService():
 		if self.index.ntotal == 0:
 			return {"error": "The index is empty please upload a document first"}
 		
-		# rewrite the query
-		rewritten_query = self._rewriter(query)	
-		
 		# query into vectors
-		embeddings_query = self.embeddings_model.encode(rewritten_query)
+		embeddings_query = self.embeddings_model.encode(query)
 		embeddings_query_np = np.array([embeddings_query)], dtype='float32')
 		faiss.normalize_L2(embeddings_query_np)
 		
@@ -196,11 +172,10 @@ class VectorService():
 					"similarity": float(distances[0][i])
 					})
 					
-		# Re ranking the results
-		returned_length = len(results)   # length of returned results by faiss
-		reranked_results = self._reRanker(rewritten_query,results,returned_length)
 					
-		return reranked_results 
+		return results
+	
+	
 		
 		
 		
