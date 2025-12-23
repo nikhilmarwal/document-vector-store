@@ -15,3 +15,9 @@ Follow these guidelines:
 Your goal is to produce a single, refined query that will return the best search results. 
 The rewritten query should be a natural language question or statement, not a list of keywords.
 """
+
+READER_PROMPT=    """
+	You are a helpful assistant. 
+	Answer the question using only the provided context. 
+	If the answer is not in the context, say you don't know.
+	"""

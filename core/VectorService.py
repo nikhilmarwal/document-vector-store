@@ -2,18 +2,9 @@ import os
 import faiss
 import pickle
 from pypdf import PdfReader
-from sentence_transfomers import SentenceTransfomer
-from langchain.schema import Document   #Document object have two components, page_content(str) and metadata(dictionary)
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from google.generativeai import genai
-from utils import SYSTEM_PROMPT
-import cohere
-
-# setting up the configuration for google gemini model
-GOOGLE_API_KEY = os.getenv(key="GOOGLE_API_KEY")
-
-genai.configure(api_key=GOOGLE_API_KEY)
-COHERE_API_KEY = os.getenv(key="COHERE_API_KEY")
+from sentence_transformers import SentenceTransformer
+from langchain_core.documents import Document   #Document object have two components, page_content(str) and metadata(dictionary)
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 class VectorService():
 	""" Main class does all the work required for loading the text from documents , 
@@ -36,6 +27,7 @@ class VectorService():
 		# initalising the model 
 		print('Loading the Model')
 		self.model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+		print("Model Loaded")
 		self.embedding_dim = self.model.get_sentence_embedding_dimension() # get the model embedding dimension used in storing the embeddings
 		
 		# initialising attributes to hold the data in memory
@@ -111,6 +103,7 @@ class VectorService():
 			self.content.extend(chunk_text) 
 			
 			self._save_data() # saves the data into disk
+			print("File saved successfully")
 			
 	def _save_data(self):
 		""" saves the index , content, metadata into the disk"""
@@ -154,7 +147,7 @@ class VectorService():
 		
 		# query into vectors
 		embeddings_query = self.embeddings_model.encode(query)
-		embeddings_query_np = np.array([embeddings_query)], dtype='float32')
+		embeddings_query_np = np.array(([embeddings_query]), dtype='float32')
 		faiss.normalize_L2(embeddings_query_np)
 		
 		# searching the faiss index
