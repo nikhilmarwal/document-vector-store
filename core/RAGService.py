@@ -12,27 +12,37 @@ class RAGService:
 
         # Rewrite query
         rewritten_query = self.context_service.build_query(query)
+        print(f"Rewritten length: {len(rewritten_query)}")
         print(f"User query rewritten as: {rewritten_query}")
 
         # Retrieve chunks
         retrieved_chunks = self.vector_service.search(rewritten_query, k=3)
 
-        for chunk in retrieved_chunks:
-            print(f"Retrieved chunk:\n\n{chunk['metadata']['content']}\n")
+        print("\n==============RETRIEVED CHUNKS=====================\n\n")
+        for i, chunk in enumerate(retrieved_chunks):
+            print(f"{i}:\n\n{chunk['metadata']['content']}\n")
 
         # Rerank chunks
         num_chunks = len(retrieved_chunks)
-        reranked_chunks = self.context_service.rerank(
+        reranked_chunks = self.context_service.reRanker(
             rewritten_query,
             retrieved_chunks,
             num_chunks
         )
 
+        print("\n================RERANKED CHUNKS=================\n\n")
+        for i, chunk in enumerate(reranked_chunks):
+            print(f"{i} : \n\n{chunk['metadata']['content']}\n")
+
         # Consolidate / compress context
+        print(type(reranked_chunks[0]))
         context = self.context_service.chunk_compressor(
             reranked_chunks,
             rewritten_query
         )
+
+        print("\n\n=========BUILDED CONTEXT===========================\n\n")
+        print(f"{context}")
 
         # Final response generation
         prompt = f"""

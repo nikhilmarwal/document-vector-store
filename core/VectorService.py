@@ -5,6 +5,7 @@ from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 from langchain_core.documents import Document   #Document object have two components, page_content(str) and metadata(dictionary)
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+import numpy as np
 
 class VectorService():
 	""" Main class does all the work required for loading the text from documents , 
@@ -26,34 +27,35 @@ class VectorService():
 		
 		# initalising the model 
 		print('Loading the Model')
-		self.model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+		self.embeddings_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 		print("Model Loaded")
-		self.embedding_dim = self.model.get_sentence_embedding_dimension() # get the model embedding dimension used in storing the embeddings
+		self.embedding_dim = self.embeddings_model.get_sentence_embedding_dimension() # get the model embedding dimension used in storing the embeddings
 		
 		# initialising attributes to hold the data in memory
 		self.index = None # index initialisiation will contain the vector index
 		self.metadata = [] # metadata array will contain the metadata of each chunk
 		self.content = [] # content array will contain the content i.e. text of each chunk
 		self._load_data() #calling the load data method (helper method) will load the index, metadata,content from memory if already exists
-		self.rewriter_model = genai.GenerativeModel(
-					model_name ="models/gemini-1.5-flash",
-					system_instruction=SYSTEM_PROMPT	
-					)
-		self.reRanker_client = cohere.ClientV2(api_key=COHERE_API_KEY)
 	def _load_data(self):
 		""" Load the index, metadata, content from memory if does already exists"""
-		if all (os.path.exists(p) for p in [self.index_path, self.meta_path, self.content_path]):
-			print("Loading already data from memory")
-			try:
-				self.index = faiss.read_index(self.index_path)
-				with open(self.meta_path, 'rb') as f_meta:
-					self.metadata = pickle.load(f_meta)
-				with open(self.content_path,'rb') as f_content:
-					self.content = pickle.load(f_content)
-				print("Data loaded successfully")
-			except Exception as e:
-				print(f"Error initalising Index, Initialising new Empty index")
-				self._initialise_empty_index() # method to initilaise an empty index
+		if os.path.exists(self.index_path):
+			print("\nLoading FAISS index")
+			self.index = faiss.read_index(self.index_path)
+		else:
+			print("\nNo FAISS index found intialising a new one")
+			self._initialise_empty_index()
+		if os.path.exists(self.meta_path):
+			with open(self.meta_path, 'rb') as f_meta:
+				self.metadata = pickle.load(f_meta)
+		else:
+			self.metadata = []
+		if os.path.exists(self.content_path):
+			with open(self.content_path,'rb') as f_content:
+				self.content = pickle.load(f_content)
+		else:
+			self.content = []
+		print("\nData loaded successfully")
+			
 				
 	def _initialise_empty_index(self):
 		"""Initialises a empty FAISS index using HNSW algorithm."""
@@ -111,28 +113,7 @@ class VectorService():
 		with open(self.content_path, 'wb') as f_content:
 			pickle.dump(self.content, f_content)
 		with open(self.meta_path, 'wb') as f_meta:
-			pickle.dump(self.metadata, f_meta)	
-			
-			
-	def _rewriter(self,query:str):
-		"""functions restructures the query/question, remove irrelevant context  and introduce relevant keyword that are more likely to match with  database for better retrievel. 
-		Args:
-			query(str): query given by the user is passed by search method.
-		Returns:
-			query(str): clean and right format query."""
-		
-		
-		response = self.rewriter_model.generate_content(
-			query,
-			generation_config={
-				"temperature":0.0,
-				"max_output_token":64
-			},
-			)
-		return response.text.strip()
-				
-
-			
+			pickle.dump(self.metadata, f_meta)				
 		
 	def search (self, query:str, k:int):
 		""" Semantically searches the index using the query provided by the user
@@ -159,7 +140,7 @@ class VectorService():
 		for i,idx in enumerate(indices[0]):
 			if idx!=-1 and idx<len(self.metadata):
 				result_metadata = self.metadata[idx].copy()   # copying because changing result won't change the original metadata
-				result_metadata['content'] = self.content[idx].copy()
+				result_metadata['content'] = self.content[idx]
 				results.append({
 					"metadata": result_metadata,
 					"similarity": float(distances[0][i])
