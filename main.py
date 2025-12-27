@@ -5,7 +5,7 @@ from langchain_community.document_compressors import LLMLinguaCompressor
 from core.VectorService import VectorService
 from core.ContextService import ContextService
 from core.RAGService import RAGService
-from utils import SYSTEM_PROMPT, READER_PROMPT
+from utils import SYSTEM_PROMPT, READER_PROMPT, QA_PROMPT
 from models.llm import GeminiModel
 import cohere
 # loading dotenv
@@ -14,11 +14,11 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 COHERE_API_KEY = os.getenv("COHERE_API_KEY")
 rewriter_model = GeminiModel(
-			model_name="gemini-2.5-pro",
+			model_name="gemini-2.5-flash",
 			system_prompt=SYSTEM_PROMPT		
 		)
 reader_model = GeminiModel(
-			model_name="gemini-2.5-pro",
+			model_name="gemini-2.5-flash",
 			system_prompt=READER_PROMPT
 		)
 reRanker_client = cohere.ClientV2()
