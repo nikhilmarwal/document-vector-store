@@ -6,6 +6,11 @@ from sentence_transformers import SentenceTransformer
 from langchain_core.documents import Document   #Document object have two components, page_content(str) and metadata(dictionary)
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import numpy as np
+from marker.converters.pdf import PdfConverter
+from marker.models import create_model_dict
+from marker.output import text_from_rendered
+from models.llm import GeminiModel
+from utils import QA_PROMPT
 
 class VectorService():
 	""" Main class does all the work required for loading the text from documents , 
@@ -35,6 +40,13 @@ class VectorService():
 		self.index = None # index initialisiation will contain the vector index
 		self.metadata = [] # metadata array will contain the metadata of each chunk
 		self.content = [] # content array will contain the content i.e. text of each chunk
+		self.converter = PdfConverter(
+			artifact_dict = create_model_dict()		
+		)  # converter used for PDF to markdown conversion
+		self.qa_model = GeminiModel(
+			model_name="gemini-2.5-flash",
+			system_prompt=QA_PROMPT
+		)
 		self._load_data() #calling the load data method (helper method) will load the index, metadata,content from memory if already exists
 	def _load_data(self):
 		""" Load the index, metadata, content from memory if does already exists"""
@@ -60,6 +72,38 @@ class VectorService():
 	def _initialise_empty_index(self):
 		"""Initialises a empty FAISS index using HNSW algorithm."""
 		self.index = faiss.IndexHNSWFlat(self.embedding_dim,32,faiss.METRIC_INNER_PRODUCT) # METRIC_INNER_PRODCUT calculates the dot product and when normalised gives the cosine simlilarity
+	
+	def _pdf_to_markdown(self,pdf_file_path:str,filename:str):
+		""" function converts the pdf file to markdown format.
+		Args:
+			str: pdf_file_path which is the file path of the pdf.
+			str: filename, name of the file
+		Returns:
+			return markdown object(not the markdown file) which is defined in pydantic basemodel , with have properties like markdown,metadata, images.
+			markdown file(.md) can be accesed using .markdown 
+		Raises:
+			RuntimeError if there is error opening the file.
+			
+		"""
+		try:
+			rendered_markdown = self.converter(os.join.path(pdf_file_path,filename)) 
+		except Exception as e:
+			raise RuntimeError(f"Error opening the file")
+		
+		return rendered_markdown
+		
+	def _text_to_qa_converter(self, chunks:list):
+		""" Convertes the normal text in into qa format via api call
+		Args:
+			list: list of chunks which contains the text of document
+		Returns:
+			list: list of chunks which have corresponding content but in question answer form
+		"""
+		
+		for i in range (0,len(chunks),5):
+			batch = chunks[i:i+5] # gives batch of 5 chunks each 
+			chunk_lines = []
+			for j, chunk in enumerate(batch,start
 		
 	def process_store_pdf(self, pdf_file_path: str, filename: str):
 			""" Loads and process the pdf given by chunking it, embedding it and storing the embeddings into vector store
@@ -73,8 +117,15 @@ class VectorService():
 			"""
 			if any(meta.get('source')== filename for meta in self.metadata):
 				raise ValueError(f"file: {filename} is already processed. Try another file")
-				
-			all_pages = []
+			
+			rendered_markdown = _pdf_to_markdown(pdf_file_path,filename)	
+			text = text_from_rendered(rendered_markdown)   # extracting all the text form the rendered markdown object
+			metadata = rendered_markdown.metadata
+			docs = Document(
+				page_content = text,
+				metadata = metadata
+			)  # making langchain document of text and metadata
+			"""all_pages = []
 			try:
 				reader = PdfReader(os.path.join(pdf_file_path,filename))
 				for i, page in enumerate(reader.pages):
@@ -85,11 +136,11 @@ class VectorService():
 				if not all_pages:   #if no text is extracted i.e. all_pages list is empty
 					raise ValueError(f"No text could be extracted from file: {filename}") 
 			except Exception as e:
-				raise RuntimeError(f"Error opening the pdf error:{e}")
-			
+				raise RuntimeError(f"Error opening the pdf error:{e}") 
+			"""
 			
 			text_splitter = RecursiveCharacterTextSplitter(chunk_size = 1000, chunk_overlap=200)
-			chunks = text_splitter.split_documents(all_pages) #split_documents is used rather than split_text, it preserves the document type of all_pages , so chunks have text and metadata both
+			chunks = text_splitter.split_documents(docs) #split_documents is used rather than split_text, it preserves the document type of all_pages , so chunks have text and metadata both
 			
 			chunk_text = [chunk.page_content for chunk in chunks]  # contains text from each chunk
 			chunk_metadata = [chunk.metadata for chunk in chunks]   # contains metadata from each chunk

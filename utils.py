@@ -21,3 +21,6 @@ READER_PROMPT=    """
 	Answer the question using only the provided context. 
 	If the answer is not in the context, say you don't know.
 	"""
+	
+QA_PROMPT= """
+"""
